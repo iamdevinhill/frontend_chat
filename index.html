@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ollama ChatBot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            display: flex;
+            height: 100vh;
+            flex-direction: row;
+        }
+        #sidebar {
+            width: 250px;
+            background-color: #000000;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: left;
+        }
+        #sidebar img {
+            width: 100px;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        #chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #1a1a1a;
+            max-width: 800px;
+            margin: 0 auto;
+            border-radius: 8px;
+        }
+        #messages-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .chat-history-item {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background-color 0.2s ease;
+        }
+        .chat-history-item:hover {
+            background-color: #2d2d2d;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: fit-content;
+        }
+        .user-message {
+            background-color: #000000;
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+            text-align: end;
+
+        }
+        .ai-message {
+            background-color: #2d2d2d;
+            color: #e0e0e0;
+            align-self: flex-start;
+        }
+        #input-container {
+            display: flex;
+            padding: 15px;
+            background-color: #2a2a2a;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.3);
+        }
+        #message-input {
+            flex-grow: 1;
+            padding: 10px;
+            background-color: #3a3a3a;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            color: #e0e0e0;
+        }
+        #send-button {
+            margin-left: 10px;
+            padding: 10px 15px;
+            background-color: #1a1a1a;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        #send-button:hover {
+            background-color: #000000;
+        }
+        #new-chat-button {
+            width: 100%;
+            padding: 10px;
+            background-color: #1a1a1a;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            transition: background-color 0.2s ease;
+        }
+        #new-chat-button:hover {
+            background-color: #2d2d2d;
+        }
+        #model-select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            background-color: #1a1a1a;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <!-- <img src="img.png" alt="ChatBot Logo"> -->
+        <select id="model-select">
+            <option value="mistral">Mistral</option>
+        </select>
+        <br>
+        <button id="new-chat-button">+ New Chat</button>
+        <div id="chat-history"></div>
+    </div>
+    <div id="chat-container">
+        <div id="messages-container"></div>
+        <div id="input-container">
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatHistory = document.getElementById('chat-history');
+        const messagesContainer = document.getElementById('messages-container');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const newChatButton = document.getElementById('new-chat-button');
+        const modelSelect = document.getElementById('model-select');
+
+        let conversations = [];
+        let currentConversationId = null;
+
+        function createConversation() {
+            const conversationId = Date.now();
+            const conversationItem = {
+                id: conversationId,
+                messages: []
+            };
+            conversations.push(conversationItem);
+            currentConversationId = conversationId;
+            updateChatHistory();
+            clearMessages();
+            return conversationId;
+        }
+
+        function addMessageToConversation(message, type) {
+            if (!currentConversationId) {
+                createConversation();
+            }
+
+            const conversation = conversations.find(c => c.id === currentConversationId);
+            conversation.messages.push({ text: message, type });
+            updateChatHistory();
+        }
+
+        function updateChatHistory() {
+            chatHistory.innerHTML = '';
+            conversations.slice().reverse().forEach(conversation => {
+                const firstMessage = conversation.messages[0];
+                if (firstMessage) {
+                    const historyItem = document.createElement('div');
+                    historyItem.classList.add('chat-history-item');
+                    historyItem.textContent = firstMessage.text.substring(0, 30) + '...';
+                    historyItem.dataset.conversationId = conversation.id;
+                    historyItem.addEventListener('click', () => loadConversation(conversation.id));
+                    chatHistory.appendChild(historyItem);
+                }
+            });
+        }
+
+        function loadConversation(conversationId) {
+            currentConversationId = conversationId;
+            const conversation = conversations.find(c => c.id === conversationId);
+            clearMessages();
+            conversation.messages.forEach(msg => {
+                addMessage(msg.text, msg.type);
+            });
+        }
+
+        function clearMessages() {
+            messagesContainer.innerHTML = '';
+        }
+
+        function addMessage(message, type, streaming = false) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', type);
+            messageElement.textContent = message;
+            
+            if (streaming && type === 'ai-message') {
+                const cursor = document.createElement('span');
+                cursor.classList.add('cursor');
+                messageElement.appendChild(cursor);
+            }
+            
+            messagesContainer.appendChild(messageElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return messageElement;
+        }
+
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                const userMessage = addMessage(message, 'user-message');
+                addMessageToConversation(message, 'user-message');
+                messageInput.value = '';
+                sendButton.disabled = true;
+
+                const aiMessageElement = addMessage('', 'ai-message', true);
+
+                // Fetch from Ollama API
+                fetch('http://localhost:11434/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: modelSelect.value,
+                        messages: [
+                            { role: "user", content: message }
+                        ],
+                        stream: true
+                    })
+                })
+                .then(response => {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let fullResponse = '';
+
+                    function processStream({ done, value }) {
+                        if (done) {
+                            addMessageToConversation(fullResponse, 'ai-message');
+                            sendButton.disabled = false;
+                            return;
+                        }
+
+                        const chunk = decoder.decode(value, { stream: true });
+                        try {
+                            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+                            lines.forEach(line => {
+                                try {
+                                    const parsedChunk = JSON.parse(line);
+                                    if (parsedChunk.message && parsedChunk.message.content) {
+                                        fullResponse += parsedChunk.message.content;
+                                        aiMessageElement.textContent = fullResponse;
+                                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                    }
+                                } catch (parseError) {
+                                    console.error('Error parsing chunk:', parseError);
+                                }
+                            });
+                        } catch (error) {
+                            console.error('Stream processing error:', error);
+                        }
+
+                        reader.read().then(processStream);
+                    }
+
+                    reader.read().then(processStream);
+                })
+                .catch(error => {
+                    console.error('Ollama API error:', error);
+                    aiMessageElement.textContent = 'Error connecting to Ollama. Please check the server.';
+                    sendButton.disabled = false;
+                });
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        newChatButton.addEventListener('click', createConversation);
+
+        // Initialize first conversation
+        createConversation();
+    </script>
+</body>
+</html>
